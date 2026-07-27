@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sol Max → Terra Low"
+  short_description: "계획·구현·검증을 분리하는 코딩 오케스트레이션"
+  default_prompt: "Use $sol-max-terra-low-workflow to plan and implement this repository task."
