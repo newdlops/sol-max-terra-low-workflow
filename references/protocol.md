@@ -2,13 +2,13 @@
 
 ## State and handoff rules
 
-Keep the current plan version, current step ID, executed commands/results, and every Sol decision in the orchestration conversation. Start Terra only after the planner's `## PLAN` is complete. During an escalation, Terra must stop editing; it may inspect the named evidence and collect the requested validation output only. Resume it only with a `CONTINUE` decision, an unabridged amended plan, or an unabridged remainder plan.
+Keep the current plan version, current step ID, executed commands/results, and every Sol decision in the orchestration conversation. Start Terra only after the planner's `## PLAN` is complete. After the planning request, wait continuously for the planner to complete that artifact; a delayed response, polling timeout, or temporary lack of output is not permission to proceed, substitute a plan, or end the workflow. Before the Terra handoff, create the target repository's `./.plan/` directory if needed and save the complete, unabridged plan as a Markdown file there. Use a descriptive, unique filename containing its work identifier and `PLAN_VERSION` (for example, `./.plan/<work-id>-<plan-version>.md`); never overwrite an earlier plan version. During an escalation, Terra must stop editing; it may inspect the named evidence and collect the requested validation output only. Resume it only with a `CONTINUE` decision, an unabridged amended plan, or an unabridged remainder plan.
 
 Use this model policy exactly: planner, decision-maker, and final reviewer use `gpt-5.6-sol` at `max` reasoning; executor uses `gpt-5.6-terra` at `low` reasoning. Spawn these roles without inherited task context and give each role only the task-local material it needs. Sol role prompts must explicitly prohibit writes to product code. Do not reuse a final review as a planning or decision turn.
 
 ## Planner contract
 
-Before implementation, the Sol planner must actually inspect relevant code, callers, tests, configuration, and data structures. It must not guess names, APIs, or framework behavior, and it must not modify product code. Return one chosen, executable solution in exactly this structure:
+Before implementation, the Sol planner must actually inspect relevant code, callers, tests, configuration, and data structures. It must not guess names, APIs, or framework behavior, and it must not modify product code. The plan has no length limit: prefer completeness over brevity and include every repository-grounded detail needed for Terra Low to implement the chosen solution without having to request a Sol decision. Resolve and document control flow, exact symbols and locations, data/error/edge-case handling, caller impacts, existing patterns to copy, step ordering, and exact validation success criteria. A terse plan that leaves meaningful implementation choices to Terra is incomplete. Return one chosen, executable solution in exactly this structure:
 
 ```markdown
 ## PLAN
@@ -41,11 +41,13 @@ Before implementation, the Sol planner must actually inspect relevant code, call
 
 ### IMPLEMENTATION_STEPS
 1. **<ID>** — `<file>` / `<symbol>`
-   - Current behavior: ...
-   - Change: ...
-   - Existing pattern/reference: ...
-   - Done when: ...
-   - Validate: `<command>`
+   - Current behavior: <exact relevant branches/data flow and source locations>
+   - Change: <exact edits, control flow, data transformations, error handling, and behavior to preserve>
+   - Existing pattern/reference: <file and symbol to follow, and which aspects to copy>
+   - Caller/test impact: <affected callers, fixtures, assertions, and required unchanged behavior>
+   - Edge cases: <inputs, failures, empty states, boundary conditions, and expected result>
+   - Done when: <observable completion conditions>
+   - Validate: `<command>` → <expected success condition>
 
 ### ALLOWED_EXECUTOR_DISCRETION
 <only local naming, private helper name, imports, formatting, nonsemantic test-fixture form, and mechanical repair of Terra's own syntax/type/import errors using an identical repository pattern>
@@ -68,7 +70,7 @@ Before implementation, the Sol planner must actually inspect relevant code, call
 <verified assumptions, or an explicit user/extra-investigation blocker>
 ```
 
-Classify LOW only for local, mechanical changes with nearly no external/data-semantic effect; NORMAL for standard multi-file product work following existing structure; HIGH for integrity, migration, transaction/concurrency, auth, money/quantity/inventory/state transition, public contract, security, or operational-data work. Resolve material assumptions before handing off to Terra.
+Classify LOW only for local, mechanical changes with nearly no external/data-semantic effect; NORMAL for standard multi-file product work following existing structure; HIGH for integrity, migration, transaction/concurrency, auth, money/quantity/inventory/state transition, public contract, security, or operational-data work. Resolve material assumptions before handing off to Terra. The planner must proactively investigate any detail that could otherwise cause Terra to request a decision; requests are reserved for genuinely new evidence or a post-plan mismatch that could not reasonably be resolved during planning.
 
 ## Terra preflight and implementation
 
@@ -142,7 +144,7 @@ Sol must investigate the provided facts and return a single executable decision:
 <CONTINUE | AMEND | REPLAN_REMAINDER | USER_DECISION_REQUIRED>
 ```
 
-For `AMEND` or `REPLAN_REMAINDER`, assign a new `PLAN_VERSION` and include the complete amended/remainder plan unabridged. Terra must apply it without reinterpretation. `CONTINUE` may add only the exact changes and validations stated in the decision; it does not authorize unrelated plan changes.
+For `AMEND` or `REPLAN_REMAINDER`, assign a new `PLAN_VERSION` and include the complete amended/remainder plan unabridged. Before Terra resumes, save that complete plan as a new Markdown file in `./.plan/` using the same work identifier and its new plan version; preserve all earlier plan files. Terra must apply it without reinterpretation. `CONTINUE` may add only the exact changes and validations stated in the decision; it does not authorize unrelated plan changes.
 
 ## Completion gates
 
