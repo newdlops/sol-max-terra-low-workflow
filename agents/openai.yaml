@@ -1,4 +1,4 @@
 interface:
   display_name: "Sol Max → Terra Low"
-  short_description: "구현 60% 이상을 지키는 최소 변경 오케스트레이션"
+  short_description: "구현 80% 이상을 지키는 최소 변경 오케스트레이션"
   default_prompt: "Use $sol-max-terra-low-workflow to plan and implement this repository task."

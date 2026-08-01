@@ -6,6 +6,7 @@
 - [State and handoff rules](#state-and-handoff-rules)
 - [Planner contract](#planner-contract)
 - [Terra implementation](#terra-implementation)
+- [Validation lock and failure handling](#validation-lock-and-failure-handling)
 - [Decision protocol](#decision-protocol)
 - [Completion gates](#completion-gates)
 - [User completion report](#user-completion-report)
@@ -14,11 +15,12 @@
 
 Optimize for delivered behavior, not verification volume.
 
-- Keep implementation at least 60% of implementation-plus-verification active effort and verification at most 40%. Count product/test edits and corrective fixes as implementation. Count preflight inspection, test execution, manual checking, diff review, decision evidence gathering, and final Sol review as verification. Keep planning concise; do not relabel verification as planning to evade the budget.
-- Treat 60:40 as a ceiling on process overhead, not a reason to manufacture implementation. Select evidence by risk and changed behavior.
+- Keep implementation at least 80% of implementation-plus-verification active effort and verification at most 20%. Count product/test edits and corrective fixes as implementation. Count preflight inspection, test execution, manual checking, diff review, decision evidence gathering, and final Sol review as verification. Keep planning concise; do not relabel verification as planning to evade the budget.
+- Treat 80:20 as a ceiling on process overhead, not a reason to manufacture implementation. Select evidence by risk and changed behavior.
 - Prefer one targeted check that directly exercises the acceptance criterion over several indirect checks. Batch related checks after a coherent edit instead of validating every small patch.
 - Do not rerun a passing check unless relevant code changed, do not run both overlapping checks without a distinct risk, and do not inspect unaffected callers or repository areas for reassurance.
-- If credible mandatory verification would exceed 40%, first narrow the verification surface, stage the delivery, or reduce scope without weakening the accepted behavior. If none is safe, return `USER_DECISION_REQUIRED` and ask permission to exceed the ratio.
+- Use validation to confirm accepted behavior, never to discover new requirements or adjacent work. Check output is evidence about the locked change; it is not authority to expand inspection, implementation, or validation.
+- If credible mandatory verification would exceed 20%, first narrow the verification surface, stage the delivery, or reduce scope without weakening the accepted behavior. If none is safe, return `USER_DECISION_REQUIRED` and ask permission to exceed the ratio.
 
 ## State and handoff rules
 
@@ -67,14 +69,14 @@ Return exactly:
 - <only semantic, safety, irreversible, public-contract, or scope conditions requiring Sol/user decision; NONE if absent>
 
 ### MINIMUM_VALIDATION
-- `<command or manual scenario>` — <criterion/risk proved>
+- V-1 — `<command or manual scenario>` — Evidence target: <one AC-* or material risk>; Stop: <decisive result that ends this item>
 
 ### EFFORT_BUDGET
-- Implementation units: <estimate, at least 60% of combined units>
-- Verification units: <estimate, at most 40% of combined units>
+- Implementation units: <estimate, at least 80% of combined units>
+- Verification units: <estimate, at most 20% of combined units>
 ```
 
-Classify HIGH for migrations, authorization/security, money/inventory, concurrency/transactions, destructive operations, operational data, or consequential public-contract changes. Tests are part of implementation when they encode new or changed behavior; do not plan tests solely to increase verification volume. Reject only plans with an unresolved material semantic choice, unsafe scope, no implementable path, or a budget below 60:40.
+Classify HIGH for migrations, authorization/security, money/inventory, concurrency/transactions, destructive operations, operational data, or consequential public-contract changes. Tests are part of implementation when they encode new or changed behavior; do not plan tests solely to increase verification volume. Every validation item must prove exactly one acceptance criterion or material risk and end at its stated stop condition. Reject a validation item that is exploratory, duplicates another item's evidence, has no stop condition, or scans beyond `SCOPE_LOCK` merely for reassurance. Reject only plans with an unresolved material semantic choice, unsafe scope, no implementable path, or a budget below 80:20.
 
 ## Terra implementation
 
@@ -99,7 +101,21 @@ Escalate only when at least one condition holds:
 
 Do not escalate for a renamed private symbol, moved file with an unambiguous replacement, local pattern choice, mechanical failure, formatting, or a single understandable test failure. Continue unaffected implementation while a decision concerns only a separable step; stop all edits only when the decision could invalidate the broader approach.
 
-Update the effort ledger after each coherent implementation block and its validation. If verification approaches 40%, stop adding checks and use the highest-value remaining evidence. Ask the user before exceeding the ceiling.
+Update the effort ledger after each coherent implementation block and its validation. If verification approaches 20%, stop at the highest-value remaining locked evidence. Ask the user before exceeding the ceiling; do not add checks to compensate for an inconclusive result.
+
+## Validation lock and failure handling
+
+Freeze `MINIMUM_VALIDATION` as `VALIDATION_LOCK` when the plan is handed to Terra. It is a closed allowlist, not a starting point for discovery. Run only its items, and stop each item at its declared condition. A check result cannot create a requirement, implementation step, audit, adjacent fix, new check category, or broader completion topic.
+
+For a failed locked item, perform one focused classification using only the check output, the changed hunks, and an exact file or symbol named by that output:
+
+1. If the failure is directly caused by the current change and one repair is uniquely determined inside `SCOPE_LOCK`, make that repair and rerun the same item once.
+2. If the failure is pre-existing, unrelated, or outside `SCOPE_LOCK`, record the item as failed with minimal attribution. Do not investigate, fix, scan, or validate the adjacent area.
+3. If attribution remains indeterminate, or the item still fails after its one repair and rerun, stop the item and report it as failed. Do not branch into another diagnostic or check. Request a user decision only when the unresolved fact makes the locked acceptance criteria unsafe or impossible; otherwise report the remaining risk.
+
+Treat out-of-scope observations as quarantined. Do not promote them into the plan, a Sol decision, a replan, final-review feedback, or the user-facing topic. If one proves the locked work unsafe or impossible, return `USER_DECISION_REQUIRED` with only the observed fact and precise decision needed. Even when an explicitly required repository-wide command emits many failures, classify only failures directly tied to changed hunks or the locked evidence target.
+
+A material in-scope Sol decision may replace an affected validation item with an equal-or-narrower item for the same evidence target. It must not append checks cumulatively. Only an explicit user-approved scope change may broaden `VALIDATION_LOCK`.
 
 ## Decision protocol
 
@@ -137,20 +153,20 @@ Sol returns:
 <CONTINUE | AMEND | REPLAN_REMAINDER | USER_DECISION_REQUIRED>
 ```
 
-Keep `SCOPE_LOCK`. For `AMEND` or `REPLAN_REMAINDER`, save the complete new plan version and hand it to Terra. Use `CONTINUE` for localized decisions; do not replan merely to refresh anchors or document an implementation detail. After a decision, rerun only checks affected by that decision.
+Keep `SCOPE_LOCK`. For `AMEND` or `REPLAN_REMAINDER`, save the complete new plan version and hand it to Terra. Use `CONTINUE` for localized decisions; do not replan merely to refresh anchors, document an implementation detail, or pursue a validation observation. After a decision, replace the affected locked validation item when necessary and run only that item; do not append validation.
 
 ## Completion gates
 
 Terra must:
 
-1. Run the `MINIMUM_VALIDATION` checks that directly cover changed behavior and material risks.
+1. Run only the closed `VALIDATION_LOCK` items that directly cover changed behavior and material risks, stopping each at its declared condition.
 2. Inspect the final changed hunks for scope, accidental debug code, and obvious regressions.
-3. Report skipped or unavailable checks honestly.
-4. Confirm the final effort ledger is at least 60:40. If not, obtain explicit user approval before more verification or reduce redundant verification work.
+3. Report each locked item as passed, failed, unavailable, or skipped, and never represent an unchecked condition as passing.
+4. Confirm the final effort ledger is at least 80:20. If not, obtain explicit user approval before more verification or reduce redundant verification work.
 
 No validation category is mandatory by name. Compile/typecheck, unit, integration, lint, manual, performance, data, and authorization checks are selected only when they add distinct evidence for this change. A full suite is reserved for repository convention, broad cross-cutting change, release gating, or explicit user request.
 
-Require final read-only Sol review only for HIGH risk, an unresolved skipped safety-critical check, a material decision that changed public/data/auth semantics, or explicit user request. An ordinary amendment, replan, or local decision does not by itself trigger review. Give the reviewer the current plan, final diff, and concise evidence. It returns `PASS`, mapped `CHANGES_REQUIRED`, or `REPLAN_REQUIRED`. Apply repairs through Terra and rerun only affected validation.
+Require final read-only Sol review only for HIGH risk, an unresolved skipped safety-critical check, a material decision that changed public/data/auth semantics, or explicit user request. An ordinary amendment, replan, local decision, or validation observation does not by itself trigger review. Give the reviewer the current plan, final diff, and concise evidence. It returns `PASS`, `CHANGES_REQUIRED` mapped to a locked acceptance criterion and changed hunk, or `REPLAN_REQUIRED` only when the locked approach is independently nonviable. Omit out-of-scope recommendations. Apply repairs through Terra and rerun only the affected locked item once.
 
 ## User completion report
 
@@ -165,14 +181,14 @@ COMPLETED | COMPLETED_WITH_MANUAL_CHECKS | BLOCKED | USER_DECISION_REQUIRED
 - `<file>` — <key change>
 
 ## VALIDATION
-- `<command>` — <result and why it was sufficient>
+- `<locked item>` — <PASSED | FAILED | UNAVAILABLE | SKIPPED; result and why it was sufficient or limiting>
 
 ## EFFORT_BALANCE
-<implementation units>:<verification units> — <at least 60:40, or explicit user-approved exception>
+<implementation units>:<verification units> — <at least 80:20, or explicit user-approved exception>
 
 ## SOL_DECISIONS
 <material decision summary and plan version, or 없음>
 
 ## REMAINING_RISKS
-<unverified material risks, or 없음>
+<unverified material risks that affect the locked outcome, or 없음; omit incidental out-of-scope observations>
 ```
